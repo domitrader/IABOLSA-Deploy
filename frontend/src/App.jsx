@@ -71,6 +71,31 @@ const App = () => {
   }, [portfolios, isDataLoaded]);
 
   const [theme, setTheme] = useState('light');
+  const [currentPrices, setCurrentPrices] = useState({});
+
+  // FETCH GLOBAL PRICES (For all portfolios)
+  const fetchGlobalPrices = async () => {
+    if (!portfolios || portfolios.length === 0) return;
+
+    // Get unique symbols from ALL portfolios
+    const allSymbols = [...new Set(portfolios.flatMap(p => p.holdings.map(h => h.symbol)))];
+    if (allSymbols.length === 0) return;
+
+    try {
+      const data = await getBatchQuotes(allSymbols);
+      if (data && Object.keys(data).length > 0) {
+        setCurrentPrices(data);
+      }
+    } catch (error) {
+      console.error("Error fetching global prices:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchGlobalPrices();
+    const interval = setInterval(fetchGlobalPrices, 60000);
+    return () => clearInterval(interval);
+  }, [portfolios]);
 
   useEffect(() => {
     const loadSentiment = async () => {
@@ -149,6 +174,7 @@ const App = () => {
               <PortfolioSummary
                 portfolios={portfolios}
                 theme={theme}
+                currentPrices={currentPrices}
                 onViewPortfolio={() => setView('PORTFOLIO')}
               />
             </div>
@@ -207,7 +233,7 @@ const App = () => {
           </div>
         )}
 
-        {view === 'PORTFOLIO' && <div className="p-8"><PortfolioManager portfolios={portfolios} onUpdatePortfolios={setPortfolios} onBack={() => setView('DASHBOARD')} theme={theme} /></div>}
+        {view === 'PORTFOLIO' && <div className="p-8"><PortfolioManager portfolios={portfolios} currentPrices={currentPrices} onUpdatePortfolios={setPortfolios} onBack={() => setView('DASHBOARD')} theme={theme} /></div>}
         {view === 'COMPOUND_INTEREST' && <CompoundInterestCalculator onBack={() => setView('DASHBOARD')} theme={theme} />}
         {view === 'PERCENTAGE_CALC' && <PercentageCalculator onBack={() => setView('DASHBOARD')} theme={theme} />}
       </div>

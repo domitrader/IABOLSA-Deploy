@@ -1,32 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { getBatchQuotes } from '../api/client';
+import React from 'react';
 import { Wallet, TrendingUp, TrendingDown, ArrowRight, Plus } from 'lucide-react';
 
-const PortfolioSummary = ({ portfolios = [], theme = 'dark', onViewPortfolio }) => {
-    const [prices, setPrices] = useState({});
-
+const PortfolioSummary = ({ portfolios = [], theme = 'dark', onViewPortfolio, currentPrices = {} }) => {
     // Select the first portfolio as "Main" or handle empty
     const mainPortfolio = portfolios.length > 0 ? portfolios[0] : null;
-
-    useEffect(() => {
-        if (!mainPortfolio) return;
-
-        const fetchPrices = async () => {
-            const symbols = [...new Set(mainPortfolio.holdings.map(h => h.symbol))];
-            if (symbols.length === 0) return;
-
-            try {
-                const data = await getBatchQuotes(symbols);
-                setPrices(data);
-            } catch (error) {
-                console.error("Error fetching portfolio prices", error);
-            }
-        };
-
-        fetchPrices();
-        const interval = setInterval(fetchPrices, 60000);
-        return () => clearInterval(interval);
-    }, [mainPortfolio]);
 
     if (!mainPortfolio) {
         return (
@@ -49,16 +26,34 @@ const PortfolioSummary = ({ portfolios = [], theme = 'dark', onViewPortfolio }) 
     // Calculate Stats
     let totalInvested = 0;
     let totalCurrent = 0;
+    let totalPrevClose = 0;
 
     mainPortfolio.holdings.forEach(h => {
-        totalInvested += (h.shares * h.price) + (h.fees || 0);
-        const price = prices[h.symbol]?.price || h.price;
-        totalCurrent += h.shares * price;
+        const invested = (h.shares * h.price) + (h.fees || 0);
+        totalInvested += invested;
+
+        const priceInfo = currentPrices[h.symbol] || { price: h.price, change: 0 };
+        const price = priceInfo.price || h.price;
+        const currentVal = h.shares * price;
+        totalCurrent += currentVal;
+
+        // For Daily Change calculation
+        // price = currentVal / shares
+        // priceChange% = (price - prevClose) / prevClose * 100
+        // prevClose = price / (1 + change/100)
+        const changePercent = priceInfo.change || 0;
+        const prevClose = price / (1 + (changePercent / 100));
+        totalPrevClose += (h.shares * prevClose);
     });
 
     const totalGain = totalCurrent - totalInvested;
     const totalGainPercent = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
-    const isPositive = totalGain >= 0;
+    const isPositiveTotal = totalGain >= 0;
+
+    // Daily Stats
+    const dailyChange = totalCurrent - totalPrevClose;
+    const dailyChangePercent = totalPrevClose > 0 ? (dailyChange / totalPrevClose) * 100 : 0;
+    const isPositiveDaily = dailyChange >= 0;
 
     return (
         <div className={`rounded-xl border overflow-hidden ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100 shadow-sm'}`}>
@@ -70,12 +65,24 @@ const PortfolioSummary = ({ portfolios = [], theme = 'dark', onViewPortfolio }) 
                     </div>
                 </div>
 
-                <div>
-                    <p className={`text-xs uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Valor Total</p>
-                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>${totalCurrent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
-                    <div className={`flex items-center mt-1 text-sm ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {isPositive ? <TrendingUp size={16} className="mr-1" /> : <TrendingDown size={16} className="mr-1" />}
-                        <span>{isPositive ? '+' : ''}${totalGain.toLocaleString()} ({totalGainPercent.toFixed(2)}%)</span>
+                <div className="space-y-4">
+                    <div>
+                        <p className={`text-[10px] uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Valor Total</p>
+                        <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{totalCurrent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</h2>
+                        <div className={`flex items-center mt-1 text-xs ${isPositiveTotal ? 'text-green-400' : 'text-red-400'}`}>
+                            <span className="font-medium">Total:</span>
+                            <span className="ml-1">{isPositiveTotal ? '+' : ''}{totalGain.toLocaleString(undefined, { maximumFractionDigits: 0 })}€ ({totalGainPercent.toFixed(2)}%)</span>
+                        </div>
+                    </div>
+
+                    <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-white/5' : 'bg-gray-50'} border ${theme === 'dark' ? 'border-white/5' : 'border-gray-100'}`}>
+                        <p className={`text-[10px] uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Variación Hoy</p>
+                        <div className={`flex items-center gap-2 ${isPositiveDaily ? 'text-green-400' : 'text-red-400'}`}>
+                            <span className="text-lg font-bold">{isPositiveDaily ? '+' : ''}{dailyChange.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</span>
+                            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${isPositiveDaily ? 'bg-green-400/10' : 'bg-red-400/10'}`}>
+                                {isPositiveDaily ? '+' : ''}{dailyChangePercent.toFixed(2)}%
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -84,14 +91,15 @@ const PortfolioSummary = ({ portfolios = [], theme = 'dark', onViewPortfolio }) 
                 <h4 className={`text-xs font-bold uppercase mb-3 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Top Activos</h4>
                 <div className="space-y-3">
                     {mainPortfolio.holdings.slice(0, 5).map((h, i) => {
-                        const price = prices[h.symbol]?.price || h.price;
+                        const priceInfo = currentPrices[h.symbol] || { price: h.price, change: 0 };
+                        const price = priceInfo.price || h.price;
                         const val = h.shares * price;
-                        const change = prices[h.symbol]?.change || 0;
+                        const change = priceInfo.change || 0;
                         return (
                             <div key={i} className="flex justify-between items-center text-sm">
                                 <div className="font-medium text-blue-400">{h.symbol}</div>
                                 <div className="text-right">
-                                    <div className={theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}>${val.toLocaleString()}</div>
+                                    <div className={theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}>{val.toLocaleString(undefined, { maximumFractionDigits: 0 })}€</div>
                                     <div className={`text-xs ${change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                         {change >= 0 ? '+' : ''}{change.toFixed(2)}%
                                     </div>

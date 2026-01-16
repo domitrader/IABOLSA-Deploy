@@ -17,7 +17,7 @@ const COLORS = {
 
 const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#0EA5E9'];
 
-const PortfolioManager = ({ portfolios, onUpdatePortfolios, onBack, theme = 'dark' }) => {
+const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, onBack, theme = 'dark' }) => {
     const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [newPortfolioName, setNewPortfolioName] = useState('');
@@ -37,28 +37,17 @@ const PortfolioManager = ({ portfolios, onUpdatePortfolios, onBack, theme = 'dar
     });
 
     // Live Prices for calculations
-    const [currentPrices, setCurrentPrices] = useState({});
+    // Now provided via props: currentPrices
     const [dividendsData, setDividendsData] = useState({});
 
-    // Search State
-    const [searchResults, setSearchResults] = useState([]);
-    const [isSearching, setIsSearching] = useState(false);
-    const [showDebug, setShowDebug] = useState(false); // DEBUG MODE
-
-    const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
-
-    // Fetch Live Prices for ALL portfolios
-    const fetchLivePrices = async () => {
+    // Fetch Dividends
+    const fetchDividends = async () => {
         if (!portfolios || portfolios.length === 0) return;
 
         // Get unique symbols from ALL portfolios
         const allSymbols = [...new Set(portfolios.flatMap(p => p.holdings.map(h => h.symbol)))];
         if (allSymbols.length === 0) return;
 
-        const prices = await getBatchQuotes(allSymbols);
-        setCurrentPrices(prices);
-
-        // Fetch Dividends
         const divs = {};
         await Promise.all(allSymbols.map(async (sym) => {
             if (!dividendsData[sym]) { // Cache check
@@ -72,10 +61,8 @@ const PortfolioManager = ({ portfolios, onUpdatePortfolios, onBack, theme = 'dar
     };
 
     useEffect(() => {
-        fetchLivePrices();
-        const interval = setInterval(fetchLivePrices, 60000);
-        return () => clearInterval(interval);
-    }, [portfolios]); // Re-fetch on any portfolio changes
+        fetchDividends();
+    }, [portfolios]); // Re-fetch dividends on portfolio changes
 
     // -- Handlers --
 
