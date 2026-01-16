@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+yfinance
+pandas
+requests
+deep-translator
+python-dotenv
+google-generativeai
+pydantic
+textblob
+beautifulsoup4
+lxml
+supabase
