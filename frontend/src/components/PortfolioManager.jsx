@@ -64,6 +64,13 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
         fetchDividends();
     }, [portfolios]); // Re-fetch dividends on portfolio changes
 
+    // Search State
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [showDebug, setShowDebug] = useState(false); // DEBUG MODE
+
+    const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
+
     // -- Handlers --
 
     const fetchPriceForDate = async (symbol, date) => {
@@ -285,15 +292,21 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
     const getPortfolioStats = (portfolio) => {
         let totalInvested = 0;
         let totalCurrent = 0;
+        let totalPrevClose = 0;
         let totalDividends = 0;
 
         portfolio.holdings.forEach(h => {
             const invested = (h.shares * h.price) + h.fees;
             totalInvested += invested;
 
-            const currentPrice = currentPrices[h.symbol]?.price || h.price; // Fallback to buy price if no live data
+            const priceInfo = currentPrices[h.symbol] || { price: h.price, change: 0 };
+            const currentPrice = priceInfo.price || h.price;
             const currentVal = h.shares * currentPrice;
             totalCurrent += currentVal;
+
+            const changePercent = priceInfo.change || 0;
+            const prevClose = currentPrice / (1 + (changePercent / 100));
+            totalPrevClose += (h.shares * prevClose);
 
             totalDividends += calculateAccumulatedDividends(h);
         });
@@ -304,7 +317,14 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
         const totalReturn = totalGain + totalDividends;
         const totalReturnPercent = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0;
 
-        return { totalInvested, totalCurrent, totalGain, totalGainPercent, totalDividends, totalReturn, totalReturnPercent };
+        const dailyChange = totalCurrent - totalPrevClose;
+        const dailyChangePercent = totalPrevClose > 0 ? (dailyChange / totalPrevClose) * 100 : 0;
+
+        return {
+            totalInvested, totalCurrent, totalGain, totalGainPercent,
+            totalDividends, totalReturn, totalReturnPercent,
+            dailyChange, dailyChangePercent
+        };
     };
 
     const getPieData = (portfolio) => {
@@ -436,12 +456,24 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                         <p className={`text-sm ${subTextClass} mb-4`}>{portfolio.holdings.length} operaciones</p>
 
                                         <div className="pt-4 border-t border-dashed border-gray-500/20">
-                                            <p className={`text-xs ${subTextClass} uppercase tracking-wider mb-1`}>Valor Actual</p>
-                                            <h4 className={`text-2xl font-bold ${textClass}`}>${totalCurrent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h4>
-                                            <div className={`flex items-center mt-2 text-sm ${totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                {totalGain >= 0 ? <TrendingUp size={16} className="mr-1" /> : <TrendingDown size={16} className="mr-1" />}
-                                                <span>
-                                                    {totalGain >= 0 ? '+' : ''}{totalGain.toLocaleString()} ({totalGainPercent.toFixed(2)}%)
+                                            <div className="flex justify-between items-end mb-2">
+                                                <div>
+                                                    <p className={`text-[10px] ${subTextClass} uppercase tracking-wider mb-0.5`}>Valor Actual</p>
+                                                    <h4 className={`text-2xl font-bold ${textClass}`}>{totalCurrent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</h4>
+                                                </div>
+                                                <div className={`text-right ${getPortfolioStats(portfolio).dailyChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    <p className={`text-[10px] ${subTextClass} uppercase tracking-wider mb-0.5`}>Hoy</p>
+                                                    <p className="text-sm font-bold">
+                                                        {getPortfolioStats(portfolio).dailyChange >= 0 ? '+' : ''}{getPortfolioStats(portfolio).dailyChange.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className={`flex items-center mt-2 text-xs py-1 px-2 rounded ${totalGain >= 0 ? 'bg-green-400/10 text-green-400' : 'bg-red-400/10 text-red-400'}`}>
+                                                {totalGain >= 0 ? <TrendingUp size={14} className="mr-1" /> : <TrendingDown size={14} className="mr-1" />}
+                                                <span className="font-medium mr-1 uppercase text-[10px]">Total:</span>
+                                                <span className="font-bold">
+                                                    {totalGain >= 0 ? '+' : ''}{totalGain.toLocaleString(undefined, { maximumFractionDigits: 0 })}€ ({totalGainPercent.toFixed(2)}%)
                                                 </span>
                                             </div>
                                         </div>
@@ -466,31 +498,33 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-8 text-center bg-transparent">
                                 <div>
-                                    <p className={`text-xs ${subTextClass} uppercase tracking-widest`}>Contribuciones</p>
-                                    <p className={`text-lg font-semibold ${textClass}`}>${getPortfolioStats(selectedPortfolio).totalInvested.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                    <p className={`text-[10px] ${subTextClass} uppercase tracking-widest mb-1`}>Contribuciones</p>
+                                    <p className={`text-lg font-semibold ${textClass}`}>{getPortfolioStats(selectedPortfolio).totalInvested.toLocaleString(undefined, { maximumFractionDigits: 0 })}€</p>
                                 </div>
                                 <div>
-                                    <p className={`text-xs ${subTextClass} uppercase tracking-widest`}>Valor de Mercado</p>
-                                    <p className={`text-xl font-bold text-blue-400`}>${getPortfolioStats(selectedPortfolio).totalCurrent.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                    <p className={`text-[10px] ${subTextClass} uppercase tracking-widest mb-1`}>Valor Mercado</p>
+                                    <p className={`text-xl font-bold text-blue-400`}>{getPortfolioStats(selectedPortfolio).totalCurrent.toLocaleString(undefined, { maximumFractionDigits: 0 })}€</p>
                                 </div>
                                 <div>
-                                    <p className={`text-xs ${subTextClass} uppercase tracking-widest`}>Retorno en Precio</p>
-                                    <p className={`text-lg font-bold ${getPortfolioStats(selectedPortfolio).totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {getPortfolioStats(selectedPortfolio).totalGain >= 0 ? '+' : ''}
-                                        {getPortfolioStats(selectedPortfolio).totalGain.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                    <p className={`text-[10px] ${subTextClass} uppercase tracking-widest mb-1`}>Variación Hoy</p>
+                                    <p className={`text-lg font-bold ${getPortfolioStats(selectedPortfolio).dailyChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {getPortfolioStats(selectedPortfolio).dailyChange >= 0 ? '+' : ''}
+                                        {getPortfolioStats(selectedPortfolio).dailyChange.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                                        <span className="text-xs ml-1 opacity-80">({getPortfolioStats(selectedPortfolio).dailyChangePercent.toFixed(2)}%)</span>
                                     </p>
                                 </div>
                                 <div>
-                                    <p className={`text-xs ${subTextClass} uppercase tracking-widest text-yellow-500`}>Dividendos Recibidos</p>
+                                    <p className={`text-[10px] ${subTextClass} uppercase tracking-widest text-yellow-500 mb-1`}>Dividendos</p>
                                     <p className={`text-lg font-bold text-yellow-500`}>
-                                        +${getPortfolioStats(selectedPortfolio).totalDividends.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                        +{getPortfolioStats(selectedPortfolio).totalDividends.toLocaleString(undefined, { maximumFractionDigits: 0 })}€
                                     </p>
                                 </div>
                                 <div>
-                                    <p className={`text-xs ${subTextClass} uppercase tracking-widest text-purple-400`}>Retorno Total</p>
+                                    <p className={`text-[10px] ${subTextClass} uppercase tracking-widest text-purple-400 mb-1`}>Retorno Total</p>
                                     <p className={`text-xl font-bold ${getPortfolioStats(selectedPortfolio).totalReturn >= 0 ? 'text-purple-400' : 'text-red-400'}`}>
                                         {getPortfolioStats(selectedPortfolio).totalReturn >= 0 ? '+' : ''}
-                                        {getPortfolioStats(selectedPortfolio).totalReturn.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                        {getPortfolioStats(selectedPortfolio).totalReturn.toLocaleString(undefined, { maximumFractionDigits: 0 })}€
+                                        <span className="text-xs ml-1 opacity-80">({getPortfolioStats(selectedPortfolio).totalReturnPercent.toFixed(2)}%)</span>
                                     </p>
                                 </div>
                             </div>
@@ -576,7 +610,7 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                         />
                                     </div>
                                     <div>
-                                        <label className={`block text-xs mb-1 ${subTextClass} text-blue-400`}>O Inversión Total ($)</label>
+                                        <label className={`block text-xs mb-1 ${subTextClass} text-blue-400`}>O Inversión Total (€)</label>
                                         <input
                                             type="number"
                                             step="any"
@@ -589,7 +623,7 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                     </div>
                                     <div className="relative">
                                         <label className={`block text-xs mb-1 ${subTextClass}`}>
-                                            Precio ($)
+                                            Precio (€)
                                             {priceError && <span className="text-red-400 ml-1 text-[10px]">{priceError}</span>}
                                         </label>
                                         <div className="relative">
@@ -613,7 +647,7 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                         </div>
                                     </div>
                                     <div>
-                                        <label className={`block text-xs mb-1 ${subTextClass}`}>Comisión ($)</label>
+                                        <label className={`block text-xs mb-1 ${subTextClass}`}>Comisión (€)</label>
                                         <input
                                             type="number"
                                             step="any"
@@ -649,8 +683,8 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                                 <th className={`${tableHeaderClass} text-right`}>Cant.</th>
                                                 <th className={`${tableHeaderClass} text-right`}>Precio C.</th>
                                                 <th className={`${tableHeaderClass} text-right`}>Actual</th>
-                                                <th className={`${tableHeaderClass} text-right`}>Valor ($)</th>
-                                                <th className={`${tableHeaderClass} text-right text-yellow-500`}>Div. ($)</th>
+                                                <th className={`${tableHeaderClass} text-right`}>Valor (€)</th>
+                                                <th className={`${tableHeaderClass} text-right text-yellow-500`}>Div. (€)</th>
                                                 <th className={`${tableHeaderClass} text-right`}>G/P (Cap.)</th>
                                                 <th className={`${tableHeaderClass} text-right text-purple-400`}>Total G/P</th>
                                                 <th className={tableHeaderClass}></th>
@@ -682,12 +716,12 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                                         </td>
                                                         <td className={tdClass}>{holding.date}</td>
                                                         <td className={`${tdClass} text-right`}>{holding.shares}</td>
-                                                        <td className={`${tdClass} text-right text-gray-400`}>${holding.price.toFixed(2)}</td>
-                                                        <td className={`${tdClass} text-right font-medium`}>${currentP.toFixed(2)}</td>
-                                                        <td className={`${tdClass} text-right font-bold`}>${currentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                        <td className={`${tdClass} text-right text-gray-400`}>{holding.price.toFixed(2)}€</td>
+                                                        <td className={`${tdClass} text-right font-medium`}>{currentP.toFixed(2)}€</td>
+                                                        <td className={`${tdClass} text-right font-bold`}>{currentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</td>
                                                         <td className={`${tdClass} text-right`}>
                                                             <div className="text-yellow-500 font-medium">
-                                                                +${divAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                +{divAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
                                                             </div>
                                                             <div className="text-xs text-yellow-500/70">
                                                                 {divYield.toFixed(2)}%
@@ -760,7 +794,7 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                                     ))}
                                                 </Pie>
                                                 <ReTooltip
-                                                    formatter={(value) => `$${value.toLocaleString()}`}
+                                                    formatter={(value) => `${value.toLocaleString()}€`}
                                                     contentStyle={{
                                                         backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)',
                                                         border: theme === 'dark' ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(0,0,0,0.1)',
@@ -880,7 +914,7 @@ const PortfolioManager = ({ portfolios, currentPrices = {}, onUpdatePortfolios, 
                                                         borderRadius: '8px',
                                                         color: theme === 'dark' ? '#fff' : '#111'
                                                     }}
-                                                    formatter={(value) => `$${value.toFixed(2)}`}
+                                                    formatter={(value) => `${value.toFixed(2)}€`}
                                                 />
                                                 <Bar dataKey="amount" name="Dividendos Estimados" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
                                             </BarChart>
