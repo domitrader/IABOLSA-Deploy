@@ -86,7 +86,7 @@ const PortfolioSummary = ({ portfolios = [], theme = 'dark', onViewPortfolio }) 
                     {mainPortfolio.holdings.slice(0, 5).map((h, i) => {
                         const price = prices[h.symbol]?.price || h.price;
                         const val = h.shares * price;
-                        const change = prices[h.symbol]?.changePercent || 0;
+                        const change = prices[h.symbol]?.change || 0;
                         return (
                             <div key={i} className="flex justify-between items-center text-sm">
                                 <div className="font-medium text-blue-400">{h.symbol}</div>

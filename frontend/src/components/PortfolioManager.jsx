@@ -47,17 +47,20 @@ const PortfolioManager = ({ portfolios, onUpdatePortfolios, onBack, theme = 'dar
 
     const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
 
-    // Fetch Live Prices for the selected portfolio
+    // Fetch Live Prices for ALL portfolios
     const fetchLivePrices = async () => {
-        if (!selectedPortfolio || selectedPortfolio.holdings.length === 0) return;
+        if (!portfolios || portfolios.length === 0) return;
 
-        const symbols = [...new Set(selectedPortfolio.holdings.map(h => h.symbol))];
-        const prices = await getBatchQuotes(symbols);
+        // Get unique symbols from ALL portfolios
+        const allSymbols = [...new Set(portfolios.flatMap(p => p.holdings.map(h => h.symbol)))];
+        if (allSymbols.length === 0) return;
+
+        const prices = await getBatchQuotes(allSymbols);
         setCurrentPrices(prices);
 
         // Fetch Dividends
         const divs = {};
-        await Promise.all(symbols.map(async (sym) => {
+        await Promise.all(allSymbols.map(async (sym) => {
             if (!dividendsData[sym]) { // Cache check
                 const data = await getDividends(sym);
                 divs[sym] = data;
@@ -69,12 +72,10 @@ const PortfolioManager = ({ portfolios, onUpdatePortfolios, onBack, theme = 'dar
     };
 
     useEffect(() => {
-        if (selectedPortfolioId) {
-            fetchLivePrices();
-            const interval = setInterval(fetchLivePrices, 60000);
-            return () => clearInterval(interval);
-        }
-    }, [selectedPortfolioId, portfolios]); // Re-fetch on portfolio change
+        fetchLivePrices();
+        const interval = setInterval(fetchLivePrices, 60000);
+        return () => clearInterval(interval);
+    }, [portfolios]); // Re-fetch on any portfolio changes
 
     // -- Handlers --
 
